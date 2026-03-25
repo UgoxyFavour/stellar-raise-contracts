@@ -1,17 +1,28 @@
-use soroban_sdk::{token, Address, Env};
+use soroban_sdk::{token, Address, Env, Symbol};
 
 use crate::DataKey;
 
 /// Centralizes transfer direction for contributor refunds.
 ///
 /// @notice Transfers `amount` tokens from `contract_address` to `contributor`.
+/// @notice Skips transfers where `amount <= 0` to prevent gas waste on no-op calls.
 /// @dev    Keeping this in one place prevents parameter-order typos at call sites.
+/// @dev    Emits debug event before transfer for observability.
 pub fn refund_single_transfer(
     token_client: &token::Client,
     contract_address: &Address,
     contributor: &Address,
     amount: i128,
 ) {
+    if amount <= 0 {
+        // Early return prevents gas waste on zero/non-positive amounts
+        return;
+    }
+
+    // Debug logging for devex and monitoring
+    token_client.env().events()
+        .publish(("debug", "refund_transfer_attempt"), (contributor.clone(), amount));
+
     token_client.transfer(contract_address, contributor, &amount);
 }
 
@@ -36,7 +47,12 @@ pub fn refund_single(env: &Env, token_address: &Address, contributor: &Address) 
     }
 
     let token_client = token::Client::new(env, token_address);
-    token_client.transfer(&env.current_contract_address(), contributor, &amount);
+    refund_single_transfer(
+        &token_client,
+        &env.current_contract_address(),
+        contributor,
+        amount,
+    );
 
     env.storage().persistent().set(&contribution_key, &0i128);
     env.storage()
@@ -56,3 +72,4 @@ pub fn get_contribution(env: &Env, contributor: &Address) -> i128 {
         .get(&DataKey::Contribution(contributor.clone()))
         .unwrap_or(0)
 }
+

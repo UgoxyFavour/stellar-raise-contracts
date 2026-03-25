@@ -28,7 +28,7 @@ This update introduces a dedicated `refund_single` pathway to make refund script
 - decreases `TotalRaised` by refunded amount
 - emits `("campaign", "refund_single")` event
 
-If the contributor has `0` stored contribution, the function returns `Ok(())` without transfer.
+If the contributor has `0` stored contribution, `refund_single_transfer` helper skips the transfer (gas optimization) and returns `Ok(())`.
 
 ## Security assumptions and validations
 
@@ -48,9 +48,17 @@ If the contributor has `0` stored contribution, the function returns `Ok(())` wi
 4. **Accounting consistency**  
    `TotalRaised` is reduced with checked subtraction to avoid silent underflow-style bugs.
 
+5. **Zero-amount optimization**  
+   `refund_single_transfer` skips transfers where `amount <= 0`, preventing no-op gas waste.
+
+6. **Debug logging**  
+   Emits `("debug", "refund_transfer_attempt") (contributor, amount)` before successful transfers for observability.
+
+
 ## Test coverage
 
-`refund_single_token.test.rs` covers:
+`refund_single_token.test.rs` + `refund_single_token_security_tests.rs` cover:
+
 
 - successful transfer + contribution reset + total update
 - single-target behavior when multiple contributors exist
