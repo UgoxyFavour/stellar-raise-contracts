@@ -11,7 +11,12 @@ pub mod contract_state_size;
 mod contract_state_size_test;
 
 pub mod refund_single_token;
-use refund_single_token::refund_single_transfer;
+use refund_single_token::{
+    execute_refund_single, refund_single_transfer, validate_refund_preconditions,
+};
+#[cfg(test)]
+#[path = "refund_single_token.test.rs"]
+mod refund_single_token_test;
 
 pub mod soroban_sdk_minor;
 
@@ -675,63 +680,8 @@ impl CrowdfundContract {
     /// * Uses `checked_sub` to prevent underflow on `total_raised`.
     pub fn refund_single(env: Env, contributor: Address) -> Result<(), ContractError> {
         contributor.require_auth();
-
-        // A successful or cancelled campaign cannot be refunded.
-        let status: Status = env.storage().instance().get(&DataKey::Status).unwrap();
-        if status == Status::Successful || status == Status::Cancelled {
-            panic!("campaign is not active");
-        }
-
-        let deadline: u64 = env.storage().instance().get(&DataKey::Deadline).unwrap();
-        if env.ledger().timestamp() <= deadline {
-            return Err(ContractError::CampaignStillActive);
-        }
-
-        let goal: i128 = env.storage().instance().get(&DataKey::Goal).unwrap();
-        let total: i128 = env
-            .storage()
-            .instance()
-            .get(&DataKey::TotalRaised)
-            .unwrap_or(0);
-
-        if total >= goal {
-            return Err(ContractError::GoalReached);
-        }
-
-        let contribution_key = DataKey::Contribution(contributor.clone());
-        let amount: i128 = env
-            .storage()
-            .persistent()
-            .get(&contribution_key)
-            .unwrap_or(0);
-        if amount == 0 {
-            return Err(ContractError::NothingToRefund);
-        }
-
-        // ── Checks-Effects-Interactions ──────────────────────────────────────
-        let token_address: Address = env.storage().instance().get(&DataKey::Token).unwrap();
-        let token_client = token::Client::new(&env, &token_address);
-        refund_single_transfer(
-            &token_client,
-            &env.current_contract_address(),
-            &contributor,
-            amount,
-        );
-
-        env.storage().persistent().set(&contribution_key, &0i128);
-        env.storage()
-            .persistent()
-            .extend_ttl(&contribution_key, 100, 100);
-
-        let new_total = total.checked_sub(amount).ok_or(ContractError::Overflow)?;
-        env.storage()
-            .instance()
-            .set(&DataKey::TotalRaised, &new_total);
-
-        env.events()
-            .publish(("campaign", "refund_single"), (contributor, amount));
-
-        Ok(())
+        let amount = validate_refund_preconditions(&env, &contributor)?;
+        execute_refund_single(&env, &contributor, amount)
     }
 
     /// Cancel the campaign and refund all contributors — callable only by
