@@ -252,6 +252,7 @@ fn is_retryable_returns_false_for_all_known_errors() {
         contribute_error_handling::error_codes::ZERO_AMOUNT,
         contribute_error_handling::error_codes::BELOW_MINIMUM,
         contribute_error_handling::error_codes::CAMPAIGN_NOT_ACTIVE,
+        contribute_error_handling::error_codes::NEGATIVE_AMOUNT,
     ] {
         assert!(!contribute_error_handling::is_retryable(code));
     }

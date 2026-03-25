@@ -323,6 +323,10 @@ impl CrowdfundContract {
             return Err(ContractError::CampaignNotActive);
         }
 
+        if amount < 0 {
+            return Err(ContractError::NegativeAmount);
+        }
+
         if amount == 0 {
             contribute_error_handling::log_contribute_error(&env, ContractError::ZeroAmount);
             return Err(ContractError::ZeroAmount);
