@@ -7,10 +7,6 @@
 //!   status, deadline, goal, and contribution balance before any state change.
 //! - **`execute_refund_single`** — atomic CEI (Checks-Effects-Interactions)
 //!   execution: zero storage first, then transfer, then emit event.
-//! - **`refund_single_transfer`** — thin wrapper around `token::Client::transfer`
-//!   that fixes the direction (contract → contributor) to prevent parameter-order
-//!   typos at call sites.
-//!
 //! ## Security Assumptions
 //!
 //! 1. **Authentication** is the caller's responsibility (`contributor.require_auth()`
@@ -19,33 +15,14 @@
 //!    re-entrant call from the token contract cannot double-claim.
 //! 3. **Overflow protection** — `total_raised` is decremented with `checked_sub`;
 //!    the function returns `ContractError::Overflow` rather than wrapping.
-//! 4. **Direction lock** — `refund_single_transfer` always transfers
-//!    `contract → contributor`; the direction cannot be reversed by a caller.
+//! 4. **Direction lock** — The token transfer explicitly uses the contract's
+//!    address as the sender and the contributor as the recipient.
 
 #![allow(missing_docs)]
 
 use soroban_sdk::{token, Address, Env};
 
 use crate::{ContractError, DataKey, Status};
-
-// ── Transfer primitive ────────────────────────────────────────────────────────
-
-/// Transfer `amount` tokens from the contract to `contributor`.
-///
-/// @notice Direction is fixed: contract → contributor.
-/// @dev    Single call site prevents parameter-order typos.
-/// @param token_client Pre-built token client.
-/// @param contract_address The crowdfund contract's own address.
-/// @param contributor Recipient of the refund.
-/// @param amount Token amount to transfer (must be > 0).
-pub fn refund_single_transfer(
-    token_client: &token::Client,
-    contract_address: &Address,
-    contributor: &Address,
-    amount: i128,
-) {
-    token_client.transfer(contract_address, contributor, &amount);
-}
 
 // ── Precondition guard ────────────────────────────────────────────────────────
 
@@ -140,12 +117,9 @@ pub fn execute_refund_single(
     // ── Interactions (transfer after state is settled) ────────────────────
     let token_address: Address = env.storage().instance().get(&DataKey::Token).unwrap();
     let token_client = token::Client::new(env, &token_address);
-    refund_single_transfer(
-        &token_client,
-        &env.current_contract_address(),
-        contributor,
-        amount,
-    );
+    
+    // Explicitly transfer from contract to contributor
+    token_client.transfer(&env.current_contract_address(), contributor, &amount);
 
     env.events()
         .publish(("campaign", "refund_single"), (contributor.clone(), amount));

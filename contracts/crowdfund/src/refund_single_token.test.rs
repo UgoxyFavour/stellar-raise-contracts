@@ -4,8 +4,9 @@
 //! ## Security notes
 //! - CEI order: storage is zeroed before the token transfer; the double-refund
 //!   test confirms a second call returns `NothingToRefund`.
-//! - Direction lock: `refund_single_transfer` always transfers contract →
-//!   contributor; the balance assertions confirm direction.
+//! - Direction lock: The token transfer explicitly uses the contract's address
+//!   as the sender and the contributor as the recipient; the balance assertions
+//!   confirm direction.
 //! - Overflow protection: `execute_refund_single` uses `checked_sub` on
 //!   `total_raised`; the large-amount test exercises this path.
 
